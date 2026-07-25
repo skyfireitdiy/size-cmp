@@ -1,0 +1,23 @@
+[project]
+name = "size-cmp"
+version = "0.1.0"
+description = "Web-based recursive directory/file size comparison tool"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3.0",
+    "flask-cors>=4.0",
+    "typer>=0.9",
+]
+
+[project.scripts]
+size-cmp = "app:cli"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["app"]
+
+[tool.ruff]
+line-length = 120

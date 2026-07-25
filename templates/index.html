@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Size Compare</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #1a1a2e;
+        color: #e0e0e0;
+      }
+      .header {
+        background: #16213e;
+        padding: 16px 24px;
+        border-bottom: 2px solid #0f3460;
+      }
+      .header h1 {
+        font-size: 20px;
+        color: #e94560;
+      }
+      .header .paths {
+        font-size: 13px;
+        margin-top: 8px;
+        color: #a0a0a0;
+      }
+      .header .paths span {
+        color: #53d8fb;
+      }
+      .container {
+        padding: 16px 24px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th {
+        text-align: left;
+        padding: 8px 12px;
+        background: #16213e;
+        color: #53d8fb;
+        font-size: 13px;
+        position: sticky;
+        top: 0;
+        border-bottom: 2px solid #0f3460;
+        z-index: 1;
+      }
+      td {
+        padding: 6px 12px;
+        border-bottom: 1px solid #1a1a3e;
+        font-size: 13px;
+        white-space: nowrap;
+      }
+      tr:hover {
+        background: #1a1a4e !important;
+      }
+      .toggle {
+        cursor: pointer;
+        user-select: none;
+        width: 18px;
+        display: inline-block;
+        text-align: center;
+        color: #53d8fb;
+        font-size: 11px;
+      }
+      .toggle:hover {
+        color: #e94560;
+      }
+      .name-cell {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .size-a {
+        color: #e94560;
+      }
+      .size-b {
+        color: #53d8fb;
+      }
+      .change-cell {
+        font-weight: bold;
+        min-width: 70px;
+      }
+      .loading {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+      }
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 100;
+        justify-content: center;
+        align-items: flex-start;
+        padding-top: 60px;
+      }
+      .modal-overlay.active {
+        display: flex;
+      }
+      .modal-box {
+        background: #16213e;
+        border-radius: 8px;
+        padding: 20px;
+        width: 80%;
+        height: 80vh;
+        overflow-y: auto;
+        border: 1px solid #0f3460;
+      }
+      .modal-box h3 {
+        color: #e94560;
+        margin-bottom: 12px;
+      }
+      .modal-box table {
+        margin-top: 8px;
+      }
+      .modal-box th {
+        background: #0f3460;
+      }
+      .close-btn {
+        float: right;
+        cursor: pointer;
+        color: #666;
+        font-size: 20px;
+        line-height: 1;
+      }
+      .close-btn:hover {
+        color: #e94560;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1>Size Compare</h1>
+      <div class="paths">
+        A: <span id="pathA">{{ path_a }}</span> &nbsp;|&nbsp; B:
+        <span id="pathB">{{ path_b }}</span>
+      </div>
+    </div>
+    <div class="container">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 40%">Name</th>
+            <th style="width: 15%">Size A</th>
+            <th style="width: 15%">Size B</th>
+            <th style="width: 15%">Diff</th>
+            <th style="width: 15%">Change</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr>
+            <td colspan="5" class="loading">Loading...</td>
+          </tr>
+        </tbody>
+      </table>
+      <div
+        class="modal-overlay"
+        id="detailPanel"
+        onclick="if (event.target === this) closeDetail();"
+      >
+        <div class="modal-box">
+          <span class="close-btn" onclick="closeDetail()">&times;</span>
+          <h3 id="detailTitle">File Detail</h3>
+          <div id="detailContent"></div>
+        </div>
+      </div>
+    </div>
+    <script>
+      let rootSizeA = 0;
+
+      function formatSizeBytes(bytes) {
+        if (bytes === 0) return "0 B";
+        const units = ["B", "K", "M", "G", "T", "P"];
+        for (const unit of units) {
+          if (Math.abs(bytes) < 1024 || unit === "P") {
+            return unit === "B" ? bytes + " B" : bytes.toFixed(1) + " " + unit;
+          }
+          bytes /= 1024;
+        }
+        return bytes.toFixed(1) + " P";
+      }
+
+      function changeColor(diff, finalRatio) {
+        if (diff === 0) return "color:#666";
+        const alpha = 0.3 + finalRatio * 0.7;
+        if (diff > 0) return "color:rgba(220,50,50," + alpha.toFixed(2) + ")";
+        return "color:rgba(50,180,50," + alpha.toFixed(2) + ")";
+      }
+
+      function bgColor(diff, finalRatio) {
+        if (diff === 0) return "";
+        const alpha = finalRatio * 0.25;
+        if (diff > 0)
+          return "background:rgba(220,50,50," + alpha.toFixed(2) + ")";
+        return "background:rgba(50,180,50," + alpha.toFixed(2) + ")";
+      }
+
+      function changeText(diff, sizeA, sizeB) {
+        if (diff === 0) return "=";
+        const pct = ((diff / rootSizeA) * 100).toFixed(1);
+        const prefix =
+          sizeA === 0 ? "+NEW " : sizeB === 0 ? "-GONE " : diff > 0 ? "+" : "";
+        return prefix + pct + "%";
+      }
+
+      function buildRow(e, depth, finalRatio) {
+        const indent = depth * 20;
+        const toggle = e.is_dir
+          ? '<span class="toggle" data-path="' +
+            e.path +
+            '" data-depth="' +
+            depth +
+            '">' +
+            "\u25B6" +
+            "</span>"
+          : '<span style="width:18px;display:inline-block"></span>';
+        const nameStyle = e.is_dir ? "font-weight:bold;" : "";
+        const diff = e.size_b - e.size_a;
+        const diffSign = diff > 0 ? "+" : "";
+        const diffStyle =
+          diff > 0
+            ? "color:rgba(220,50,50,0.9)"
+            : diff < 0
+              ? "color:rgba(50,180,50,0.9)"
+              : "color:#666";
+        const rowBg = bgColor(diff, finalRatio);
+        const nameClick = e.is_dir ? "" : ' style="cursor:pointer"';
+        return (
+          '<tr class="tree-row" data-path="' +
+          e.path +
+          '" data-depth="' +
+          depth +
+          '"' +
+          (rowBg ? ' style="' + rowBg + '"' : "") +
+          ">" +
+          '<td><div class="name-cell" style="padding-left:' +
+          indent +
+          'px">' +
+          toggle +
+          '<span style="' +
+          nameStyle +
+          '"' +
+          nameClick +
+          ">" +
+          e.name +
+          "</span></div></td>" +
+          '<td class="size-a">' +
+          e.size_a_fmt +
+          "</td>" +
+          '<td class="size-b">' +
+          e.size_b_fmt +
+          "</td>" +
+          '<td style="' +
+          diffStyle +
+          '">' +
+          diffSign +
+          formatSizeBytes(Math.abs(diff)) +
+          "</td>" +
+          '<td class="change-cell" style="' +
+          changeColor(diff, finalRatio) +
+          '">' +
+          changeText(diff, e.size_a, e.size_b) +
+          "</td>" +
+          "</tr>"
+        );
+      }
+
+      function renderTree(data, depth) {
+        if (!data.entries || data.entries.length === 0) return "";
+        const diffs = data.entries
+          .map((e) => Math.abs(e.size_b - e.size_a))
+          .filter((d) => d > 0)
+          .sort((a, b) => a - b);
+        const maxIdx = Math.max(diffs.length - 1, 1);
+        let html = "";
+        for (const e of data.entries) {
+          const diff = Math.abs(e.size_b - e.size_a);
+          let lo = 0,
+            hi = diffs.length;
+          while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            diffs[mid] < diff ? (lo = mid + 1) : (hi = mid);
+          }
+          const rankRatio = diff === 0 ? 0 : (lo + 1) / maxIdx;
+          const sizeRatio =
+            diff === 0 ? 0 : Math.min(diff / Math.max(rootSizeA, 1), 1);
+          const finalRatio = Math.min(rankRatio * 0.5 + sizeRatio * 0.5, 1);
+          html += buildRow(e, depth, finalRatio);
+        }
+        return html;
+      }
+
+      function toggleDir(toggleEl) {
+        const row = toggleEl.closest("tr");
+        const path = toggleEl.dataset.path;
+        const depth = parseInt(toggleEl.dataset.depth);
+        if (toggleEl.textContent === "\u25B6") {
+          toggleEl.textContent = "\u25BC";
+          fetch("/api/compare?path=" + encodeURIComponent(path))
+            .then((r) => r.json())
+            .then((data) => {
+              const html = renderTree(data, depth + 1);
+              row.insertAdjacentHTML("afterend", html);
+            })
+            .catch((err) => {
+              row.insertAdjacentHTML(
+                "afterend",
+                '<tr><td colspan="5" style="color:#e94560;padding-left:' +
+                  (depth + 1) * 20 +
+                  'px">Error: ' +
+                  err.message +
+                  "</td></tr>",
+              );
+            });
+        } else {
+          toggleEl.textContent = "\u25B6";
+          let next = row.nextElementSibling;
+          while (next && parseInt(next.dataset.depth) > depth) {
+            const toRemove = next;
+            next = next.nextElementSibling;
+            toRemove.remove();
+          }
+        }
+      }
+
+      function loadRoot() {
+        const tbody = document.getElementById("tbody");
+        tbody.innerHTML =
+          '<tr><td colspan="5" class="loading">Loading...</td></tr>';
+        fetch("/api/compare")
+          .then((r) => r.json())
+          .then((data) => {
+            rootSizeA = data.entries.reduce((sum, e) => sum + e.size_a, 0);
+            tbody.innerHTML = renderTree(data, 0);
+          })
+          .catch((err) => {
+            tbody.innerHTML =
+              '<tr><td colspan="5" class="loading">Error: ' +
+              err.message +
+              "</td></tr>";
+          });
+      }
+
+      function closeDetail() {
+        document.getElementById("detailPanel").classList.remove("active");
+      }
+
+      function showDetail(relPath) {
+        const panel = document.getElementById("detailPanel");
+        const title = document.getElementById("detailTitle");
+        const content = document.getElementById("detailContent");
+        title.textContent = "Loading...";
+        content.innerHTML = "";
+        panel.classList.add("active");
+        Promise.all([
+          fetch(
+            "/api/file_detail?side=a&path=" + encodeURIComponent(relPath),
+          ).then((r) => r.json()),
+          fetch(
+            "/api/file_detail?side=b&path=" + encodeURIComponent(relPath),
+          ).then((r) => r.json()),
+        ])
+          .then(([dA, dB]) => {
+            title.textContent = relPath;
+            let html =
+              '<table><thead><tr><th>Property</th><th class="size-a">Side A</th><th class="size-b">Side B</th></tr></thead><tbody>';
+            html +=
+              "<tr><td>Type</td><td>" +
+              (dA.type || "-") +
+              "</td><td>" +
+              (dB.type || "-") +
+              "</td></tr>";
+            html +=
+              "<tr><td>Size</td><td>" +
+              formatSizeBytes(dA.size || 0) +
+              "</td><td>" +
+              formatSizeBytes(dB.size || 0) +
+              "</td></tr>";
+            if (dA.elf_sections || dB.elf_sections) {
+              html +=
+                '<tr><td colspan="3" style="color:#e94560;padding-top:12px"><b>ELF Sections</b></td></tr>';
+              const secs = new Set([
+                ...Object.keys(dA.elf_sections || {}),
+                ...Object.keys(dB.elf_sections || {}),
+              ]);
+              for (const s of secs) {
+                const vA = dA.elf_sections ? dA.elf_sections[s] || "-" : "-";
+                const vB = dB.elf_sections ? dB.elf_sections[s] || "-" : "-";
+                html +=
+                  "<tr><td>" +
+                  s +
+                  "</td><td>" +
+                  (typeof vA === "number" ? formatSizeBytes(vA) : vA) +
+                  "</td><td>" +
+                  (typeof vB === "number" ? formatSizeBytes(vB) : vB) +
+                  "</td></tr>";
+              }
+            }
+            if (dA.binwalk || dB.binwalk) {
+              html +=
+                '<tr><td colspan="3" style="color:#53d8fb;padding-top:12px"><b>Binwalk Analysis</b></td></tr>';
+              if (dA.binwalk && dA.binwalk.length > 0) {
+                html +=
+                  '<tr><td colspan="3" style="color:#e94560"><b>Side A:</b></td></tr>';
+                for (const entry of dA.binwalk) {
+                  html +=
+                    "<tr><td>" +
+                    entry.offset +
+                    "</td><td>" +
+                    entry.hex +
+                    "</td><td>" +
+                    entry.description +
+                    "</td></tr>";
+                }
+              }
+              if (dB.binwalk && dB.binwalk.length > 0) {
+                html +=
+                  '<tr><td colspan="3" style="color:#53d8fb"><b>Side B:</b></td></tr>';
+                for (const entry of dB.binwalk) {
+                  html +=
+                    "<tr><td>" +
+                    entry.offset +
+                    "</td><td>" +
+                    entry.hex +
+                    "</td><td>" +
+                    entry.description +
+                    "</td></tr>";
+                }
+              }
+            }
+            html += "</tbody></table>";
+            content.innerHTML = html;
+          })
+          .catch((err) => {
+            content.innerHTML =
+              '<p style="color:#e94560">Error: ' + err.message + "</p>";
+          });
+      }
+
+      document.getElementById("tbody").addEventListener("click", function (ev) {
+        const row = ev.target.closest("tr.tree-row");
+        if (!row) return;
+        const toggle = row.querySelector(".toggle");
+        if (toggle) {
+          toggleDir(toggle);
+        } else {
+          const p = row.dataset.path;
+          if (p) showDetail(p);
+        }
+      });
+
+      loadRoot();
+    </script>
+  </body>
+</html>
