@@ -38,22 +38,23 @@ def parse_size(size_str: str) -> int:
 
 
 def format_size(size_bytes: int) -> str:
-    """Format bytes to human-readable string."""
+    """Format bytes as 'raw_bytes (friendly)' e.g. '93512 (91.3 K)'."""
     if size_bytes == 0:
-        return "0 B"
+        return "0"
+    raw = int(size_bytes)
+    val = abs(raw)
     for unit in ["B", "K", "M", "G", "T", "P"]:
-        if abs(size_bytes) < 1024 or unit == "P":
-            if unit == "B":
-                return f"{int(size_bytes)} B"
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes = int(size_bytes) // 1024
-    return f"{size_bytes:.1f} P"
+        if val < 1024 or unit == "P":
+            friendly = f"{val} B" if unit == "B" else f"{val:.1f} {unit}"
+            return f"{raw} ({friendly})"
+        val /= 1024
+    return f"{raw} ({val:.1f} P)"
 
 
 def run_dust(path: str) -> dict:
     """Run dust -j on a path and return parsed JSON."""
     try:
-        result = subprocess.run(["dust", "-j", path], capture_output=True, text=True, timeout=120)
+        result = subprocess.run(["dust", "-j", "-o", "b", path], capture_output=True, text=True, timeout=120)
         output = result.stdout.strip()
         json_start = output.find("{")
         if json_start >= 0:
@@ -126,6 +127,9 @@ def get_binwalk_info(path: str) -> list:
 
 def get_file_detail(path: str) -> dict:
     """Get detailed file info based on file type."""
+    # Symlink: don't resolve, just report link size
+    if os.path.islink(path):
+        return {"type": "symlink", "size": os.lstat(path).st_size}
     if not os.path.isfile(path):
         return {"type": "missing", "size": 0}
 
@@ -166,6 +170,9 @@ def compare_directories(path_a: str, path_b: str, sub_path: str = "") -> dict:
         in_a = name in entries_a
         in_b = name in entries_b
 
+        # Symlinks: detect before isdir (isdir follows links)
+        is_link_a = os.path.islink(entry_a) if in_a else False
+        is_link_b = os.path.islink(entry_b) if in_b else False
         is_dir_a = os.path.isdir(entry_a) if in_a else False
         is_dir_b = os.path.isdir(entry_b) if in_b else False
         is_dir = is_dir_a or is_dir_b
@@ -174,17 +181,29 @@ def compare_directories(path_a: str, path_b: str, sub_path: str = "") -> dict:
         size_b = 0
 
         if is_dir:
+            # Symlink dirs: use lstat for link size, don't follow with dust
             if in_a and is_dir_a:
-                dust_a = run_dust(entry_a)
-                size_a = parse_size(dust_a.get("size", "0B"))
+                if is_link_a:
+                    size_a = os.lstat(entry_a).st_size
+                else:
+                    dust_a = run_dust(entry_a)
+                    size_a = parse_size(dust_a.get("size", "0B"))
             if in_b and is_dir_b:
-                dust_b = run_dust(entry_b)
-                size_b = parse_size(dust_b.get("size", "0B"))
+                if is_link_b:
+                    size_b = os.lstat(entry_b).st_size
+                else:
+                    dust_b = run_dust(entry_b)
+                    size_b = parse_size(dust_b.get("size", "0B"))
         else:
             # Only get file size for the list view; details loaded on demand
-            if in_a and os.path.isfile(entry_a):
+            # Symlinks: use lstat to get link size, not target
+            if in_a and is_link_a:
+                size_a = os.lstat(entry_a).st_size
+            elif in_a and os.path.isfile(entry_a):
                 size_a = os.path.getsize(entry_a)
-            if in_b and os.path.isfile(entry_b):
+            if in_b and is_link_b:
+                size_b = os.lstat(entry_b).st_size
+            elif in_b and os.path.isfile(entry_b):
                 size_b = os.path.getsize(entry_b)
 
         diff = size_a - size_b
@@ -207,11 +226,18 @@ def compare_directories(path_a: str, path_b: str, sub_path: str = "") -> dict:
     # Sort: directories first, then by diff magnitude descending
     results.sort(key=lambda x: (not x["is_dir"], -abs(x["diff"])))
 
+    root_size_a = sum(e["size_a"] for e in results)
+    root_size_b = sum(e["size_b"] for e in results)
+
     return {
         "path_a": path_a,
         "path_b": path_b,
         "sub_path": sub_path,
         "entries": results,
+        "root_size_a": root_size_a,
+        "root_size_b": root_size_b,
+        "root_size_a_fmt": format_size(root_size_a),
+        "root_size_b_fmt": format_size(root_size_b),
     }
 
 

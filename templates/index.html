@@ -179,15 +179,19 @@
       let rootSizeA = 0;
 
       function formatSizeBytes(bytes) {
-        if (bytes === 0) return "0 B";
+        if (bytes === 0) return "0";
+        const raw = bytes;
+        let val = Math.abs(bytes);
         const units = ["B", "K", "M", "G", "T", "P"];
         for (const unit of units) {
-          if (Math.abs(bytes) < 1024 || unit === "P") {
-            return unit === "B" ? bytes + " B" : bytes.toFixed(1) + " " + unit;
+          if (val < 1024 || unit === "P") {
+            const friendly =
+              unit === "B" ? val + " B" : val.toFixed(1) + " " + unit;
+            return raw + " (" + friendly + ")";
           }
-          bytes /= 1024;
+          val /= 1024;
         }
-        return bytes.toFixed(1) + " P";
+        return raw + " (" + val.toFixed(1) + " P)";
       }
 
       function changeColor(diff, finalRatio) {
@@ -340,8 +344,44 @@
         fetch("/api/compare")
           .then((r) => r.json())
           .then((data) => {
-            rootSizeA = data.entries.reduce((sum, e) => sum + e.size_a, 0);
-            tbody.innerHTML = renderTree(data, 0);
+            rootSizeA =
+              data.root_size_a ||
+              data.entries.reduce((sum, e) => sum + e.size_a, 0);
+            const rootDiff = data.root_size_b - data.root_size_a;
+            const rootRow =
+              '<tr class="tree-row root-row" style="background:#0f3460">' +
+              '<td><div class="name-cell" style="padding-left:8px;font-weight:bold">' +
+              data.path_a +
+              " vs " +
+              data.path_b +
+              "</div></td>" +
+              '<td class="size-a" style="font-weight:bold">' +
+              (data.root_size_a_fmt || formatSizeBytes(data.root_size_a)) +
+              "</td>" +
+              '<td class="size-b" style="font-weight:bold">' +
+              (data.root_size_b_fmt || formatSizeBytes(data.root_size_b)) +
+              "</td>" +
+              '<td style="font-weight:bold;color:' +
+              (rootDiff > 0
+                ? "rgba(220,50,50,0.9)"
+                : rootDiff < 0
+                  ? "rgba(50,180,50,0.9)"
+                  : "#666") +
+              '">' +
+              (rootDiff > 0 ? "+" : "") +
+              formatSizeBytes(Math.abs(rootDiff)) +
+              "</td>" +
+              '<td class="change-cell" style="font-weight:bold;color:' +
+              (rootDiff > 0
+                ? "rgba(220,50,50,0.9)"
+                : rootDiff < 0
+                  ? "rgba(50,180,50,0.9)"
+                  : "#666") +
+              '">' +
+              changeText(rootDiff, data.root_size_a, data.root_size_b) +
+              "</td>" +
+              "</tr>";
+            tbody.innerHTML = rootRow + renderTree(data, 0);
           })
           .catch((err) => {
             tbody.innerHTML =
