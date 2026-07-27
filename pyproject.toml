@@ -23,5 +23,8 @@ default = true
 [tool.setuptools]
 py-modules = ["app"]
 
+[tool.setuptools.package-data]
+"*" = ["deps/**/*"]
+
 [tool.ruff]
 line-length = 120

@@ -9,9 +9,14 @@ import sys
 from pathlib import Path
 from typing import Annotated
 
-import typer
-from flask import Flask, jsonify, render_template, request
-from flask_cors import CORS
+# Add bundled deps to PATH
+_DEPS_DIR = Path(__file__).parent / "deps"
+if _DEPS_DIR.is_dir():
+    os.environ["PATH"] = str(_DEPS_DIR) + os.pathsep + os.environ.get("PATH", "")
+
+import typer  # noqa: E402
+from flask import Flask, jsonify, render_template, request  # noqa: E402
+from flask_cors import CORS  # noqa: E402
 
 app = Flask(__name__)
 CORS(app)
