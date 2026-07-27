@@ -16,6 +16,10 @@ size-cmp = "app:cli"
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
+[[tool.uv.index]]
+url = "https://artsz.zte.com.cn/artifactory/api/pypi/public-pypi-virtual/simple"
+default = true
+
 [tool.setuptools]
 py-modules = ["app"]
 

@@ -3,6 +3,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -108,8 +109,9 @@ def get_elf_size_info(path: str) -> dict:
 
 def get_binwalk_info(path: str) -> list:
     """Get binwalk analysis for a binary file (only for files < 10MB)."""
+    if not shutil.which("binwalk"):
+        return [{"offset": "0", "hex": "0x0", "description": "binwalk not installed"}]
     try:
-        # Skip large files to avoid timeout
         if os.path.getsize(path) > 10 * 1024 * 1024:
             return [{"offset": "0", "hex": "0x0", "description": "File too large for binwalk analysis (>10MB)"}]
         result = subprocess.run(["binwalk", path], capture_output=True, text=True, timeout=30)
@@ -267,11 +269,59 @@ def api_file_detail():
     return jsonify(detail)
 
 
+def collect_all_files(path_a: str, path_b: str, sub_path: str = "") -> list[dict]:
+    """Recursively collect all files (not dirs) from both sides."""
+    full_a = os.path.join(path_a, sub_path) if sub_path else path_a
+    full_b = os.path.join(path_b, sub_path) if sub_path else path_b
+
+    entries_a = set(os.listdir(full_a)) if os.path.isdir(full_a) else set()
+    entries_b = set(os.listdir(full_b)) if os.path.isdir(full_b) else set()
+
+    files = []
+    for name in sorted(entries_a | entries_b):
+        entry_a = os.path.join(full_a, name)
+        entry_b = os.path.join(full_b, name)
+        rel_path = os.path.join(sub_path, name) if sub_path else name
+
+        in_a, in_b = name in entries_a, name in entries_b
+        is_link_a = os.path.islink(entry_a) if in_a else False
+        is_link_b = os.path.islink(entry_b) if in_b else False
+        is_dir_a = os.path.isdir(entry_a) if in_a else False
+        is_dir_b = os.path.isdir(entry_b) if in_b else False
+
+        # Recurse into real directories (not symlinks)
+        if (is_dir_a and not is_link_a) or (is_dir_b and not is_link_b):
+            files.extend(collect_all_files(path_a, path_b, rel_path))
+            continue
+
+        # File or symlink: collect size
+        size_a, size_b = 0, 0
+        if in_a and is_link_a:
+            size_a = os.lstat(entry_a).st_size
+        elif in_a and os.path.isfile(entry_a):
+            size_a = os.path.getsize(entry_a)
+        if in_b and is_link_b:
+            size_b = os.lstat(entry_b).st_size
+        elif in_b and os.path.isfile(entry_b):
+            size_b = os.path.getsize(entry_b)
+
+        files.append(
+            {
+                "path": rel_path,
+                "size_a": size_a,
+                "size_b": size_b,
+                "diff": size_a - size_b,
+            }
+        )
+
+    return files
+
+
 cli = typer.Typer(help="Compare sizes of two files/directories via web UI")
 
 
 @cli.command()
-def _main_run(
+def web(
     path_a: Annotated[str, typer.Argument(help="First file or directory path")],
     path_b: Annotated[str, typer.Argument(help="Second file or directory path")],
     port: Annotated[int, typer.Option("--port", "-p", help="Web server port")] = 5000,
@@ -292,6 +342,77 @@ def _main_run(
     typer.echo(f"Comparing:\n  A: {PATH_A}\n  B: {PATH_B}")
     typer.echo(f"Starting web server at http://{host}:{port}")
     app.run(host=host, port=port, debug=False)
+
+
+@cli.command()
+def top(
+    path_a: Annotated[str, typer.Argument(help="First directory path")],
+    path_b: Annotated[str, typer.Argument(help="Second directory path")],
+    n: Annotated[int, typer.Option("--top", "-n", help="Top N files by change ratio")] = 10,
+    json_output: Annotated[bool, typer.Option("--json", help="Output in JSON format")] = False,
+):
+    """Show top N files with highest change ratio (|diff| / total_size)."""
+    import json
+
+    pa = Path(path_a).resolve()
+    pb = Path(path_b).resolve()
+    if not pa.exists():
+        typer.echo(f"Error: {pa} does not exist", err=True)
+        raise typer.Exit(1)
+    if not pb.exists():
+        typer.echo(f"Error: {pb} does not exist", err=True)
+        raise typer.Exit(1)
+
+    if not json_output:
+        typer.echo(f"Scanning {pa} vs {pb} ...")
+    files = collect_all_files(str(pa), str(pb))
+    total_a = sum(f["size_a"] for f in files)
+    total_b = sum(f["size_b"] for f in files)
+    total = max(total_a, total_b, 1)
+
+    # Sort by |diff| / total descending
+    files.sort(key=lambda f: -abs(f["diff"]))
+    top_files = files[:n]
+
+    if json_output:
+        result = {
+            "path_a": str(pa),
+            "path_b": str(pb),
+            "total_a": total_a,
+            "total_b": total_b,
+            "total_a_fmt": format_size(total_a),
+            "total_b_fmt": format_size(total_b),
+            "diff": total_a - total_b,
+            "diff_fmt": format_size(total_a - total_b),
+            "top_n": [
+                {
+                    "rank": i,
+                    "path": f["path"],
+                    "size_a": f["size_a"],
+                    "size_a_fmt": format_size(f["size_a"]),
+                    "size_b": f["size_b"],
+                    "size_b_fmt": format_size(f["size_b"]),
+                    "diff": f["diff"],
+                    "diff_fmt": format_size(f["diff"]),
+                    "ratio": round(abs(f["diff"]) / total * 100, 2),
+                }
+                for i, f in enumerate(top_files, 1)
+            ],
+        }
+        typer.echo(json.dumps(result, indent=2))
+        return
+
+    # Table format
+    typer.echo(f"\nTotal: A={format_size(total_a)}  B={format_size(total_b)}  Diff={format_size(total_a - total_b)}")
+    typer.echo(f"{'Rank':<5} {'Ratio':>8} {'Diff':>16} {'Size A':>16} {'Size B':>16}  Path")
+    typer.echo("-" * 90)
+    for i, f in enumerate(top_files, 1):
+        ratio = abs(f["diff"]) / total * 100
+        diff_sign = "+" if f["diff"] > 0 else ""
+        typer.echo(
+            f"{i:<5} {ratio:>7.2f}% {diff_sign}{format_size(f['diff']):>15} "
+            f"{format_size(f['size_a']):>16} {format_size(f['size_b']):>16}  {f['path']}"
+        )
 
 
 if __name__ == "__main__":
