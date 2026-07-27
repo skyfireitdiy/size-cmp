@@ -1,13 +1,18 @@
 [project]
 name = "size-cmp"
 version = "0.1.1"
-description = "Web-based recursive directory/file size comparison tool"
+description = "A lightweight tool to compare the size of two directories or files, with a web UI and CLI, supporting bundled binary dependencies."
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "flask>=3.0",
     "flask-cors>=4.0",
     "typer>=0.9",
 ]
+
+[project.urls]
+Repository = "https://github.com/skyfireitdiy/size-cmp.git"
+Documentation = "https://github.com/skyfireitdiy/size-cmp#readme"
 
 [project.scripts]
 size-cmp = "app:cli"
@@ -16,9 +21,6 @@ size-cmp = "app:cli"
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
-[[tool.uv.index]]
-url = "https://artsz.zte.com.cn/artifactory/api/pypi/public-pypi-virtual/simple"
-default = true
 
 [tool.setuptools]
 py-modules = ["app"]
