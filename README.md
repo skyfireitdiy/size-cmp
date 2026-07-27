@@ -30,11 +30,11 @@ Open your browser and navigate to `http://localhost:5002`. The UI displays a tre
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--host` | Bind address (default: `0.0.0.0`) |
-| `--port` | Port number (default: `5002`) |
-| `--debug` | Enable Flask debug mode |
+| Option    | Description                       |
+| --------- | --------------------------------- |
+| `--host`  | Bind address (default: `0.0.0.0`) |
+| `--port`  | Port number (default: `5002`)     |
+| `--debug` | Enable Flask debug mode           |
 
 ---
 
@@ -52,10 +52,10 @@ size-cmp top /path/to/dirA /path/to/dirB -n 10 --json
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `-n`, `--top` | Number of entries to display (default: 10) |
-| `--json` | Print a machine‑readable JSON object instead of a table |
+| Option              | Description                                                                                           |
+| ------------------- | ----------------------------------------------------------------------------------------------------- |
+| `-n`, `--top`       | Number of entries to display (default: 10)                                                            |
+| `--json`            | Print a machine‑readable JSON object instead of a table                                               |
 | `--host` / `--port` | Same as the web command – only needed when you also want to start the web UI from the same invocation |
 
 ---
@@ -64,6 +64,19 @@ size-cmp top /path/to/dirA /path/to/dirB -n 10 --json
 
 - **Binary dependencies** – The `deps/` folder contains the required binaries (`dust`, `file`, `size`). They are automatically added to `PATH` when `app.py` starts, so the tool works on any Linux host without installing these utilities globally.
 - **Git metadata** – The repository’s Git author/committer information has been normalised to `skyfire <skyfireitdiy@hotmail.com>`.
+
+---
+
+## 📚 License
+
+MIT License – see the `LICENSE` file for details.
+
+---
+
+## 🌐 Internationalization
+
+- **English README**: This file (`README.md`).
+- **中文 README**: See the companion file [`README.zh.md`](README.zh.md) for Chinese documentation.
 
 ---
 
