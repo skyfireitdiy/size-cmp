@@ -315,7 +315,7 @@ def collect_all_files(path_a: str, path_b: str, sub_path: str = "") -> list[dict
                 "path": rel_path,
                 "size_a": size_a,
                 "size_b": size_b,
-                "diff": size_a - size_b,
+                "diff": size_b - size_a,  # Positive: A→B increase, Negative: A→B decrease
             }
         )
 
@@ -387,8 +387,8 @@ def top(
             "total_b": total_b,
             "total_a_fmt": format_size(total_a),
             "total_b_fmt": format_size(total_b),
-            "diff": total_a - total_b,
-            "diff_fmt": format_size(total_a - total_b),
+            "diff": total_b - total_a,  # Positive: A→B increase, Negative: A→B decrease
+            "diff_fmt": format_size(total_b - total_a),
             "top_n": [
                 {
                     "rank": i,
@@ -408,12 +408,12 @@ def top(
         return
 
     # Table format
-    typer.echo(f"\nTotal: A={format_size(total_a)}  B={format_size(total_b)}  Diff={format_size(total_a - total_b)}")
+    typer.echo(f"\nTotal: A={format_size(total_a)}  B={format_size(total_b)}  Diff={format_size(total_b - total_a)}")
     typer.echo(f"{'Rank':<5} {'Ratio':>8} {'Diff':>16} {'Size A':>16} {'Size B':>16}  Path")
     typer.echo("-" * 90)
     for i, f in enumerate(top_files, 1):
         ratio = abs(f["diff"]) / total * 100
-        diff_sign = "+" if f["diff"] > 0 else ""
+        diff_sign = "+" if f["diff"] > 0 else ""  # +: A→B increase, -: A→B decrease
         typer.echo(
             f"{i:<5} {ratio:>7.2f}% {diff_sign}{format_size(f['diff']):>15} "
             f"{format_size(f['size_a']):>16} {format_size(f['size_b']):>16}  {f['path']}"
